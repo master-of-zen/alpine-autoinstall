@@ -103,17 +103,23 @@ ensure_packages() {
   log "Updating package index..."
   apk update || err "Failed to update package index. Check network connection."
 
-  # Install required packages (try sgdisk first, fallback to gdisk)
-  log "Installing required packages..."
-  if ! apk add --no-cache zfs parted util-linux dosfstools curl efibootmgr e2fsprogs sgdisk; then
-    log "sgdisk not found, trying gdisk package..."
-    apk add --no-cache zfs parted util-linux dosfstools curl efibootmgr e2fsprogs gdisk || err "Failed to install required packages"
+  # Install required packages from online repos (not ISO cache)
+  log "Installing required packages from online repositories..."
+  # Force download from repos, not ISO cache
+  rm -f /var/cache/apk/* 2>/dev/null || true
+
+  # Install core packages (parted can handle GPT)
+  apk add zfs parted util-linux dosfstools curl efibootmgr e2fsprogs || err "Failed to install required packages"
+
+  # Try to install sgdisk/gdisk if available (optional, parted works fine)
+  if ! apk add sgdisk 2>/dev/null; then
+    if ! apk add gdisk 2>/dev/null; then
+      log "sgdisk/gdisk not available, using parted for GPT partitioning"
+    fi
   fi
 
   # Try to install eudev if available (optional, mdev works too)
-  apk add --no-cache eudev 2>/dev/null || log "eudev not available, using mdev"
-
-  # Load ZFS module
+  apk add eudev 2>/dev/null || log "eudev not available, using mdev"  # Load ZFS module
   modprobe zfs || err "Failed to load ZFS kernel module"
   mdev -s || true
 }
@@ -131,15 +137,27 @@ by_id_path() {
 partition_disk() {
   disk="$1"
   log "Partitioning $disk (EFI ${EFI_SIZE_MIB}MiB + ZFS)"
-  # Zap and create GPT
-  sgdisk --zap-all "$disk" || true
-  partprobe "$disk" || true
-  # Create partitions: 1MiB alignment
-  # 1: EFI from 1MiB to (1MiB + EFI_SIZE_MIB)
-  # 2: ZFS rest
-  sgdisk -n1:1MiB:+${EFI_SIZE_MIB}MiB -t1:EF00 -c1:"EFI System" "$disk"
-  sgdisk -n2:0:0 -t2:BF01 -c2:"ZFS" "$disk"
-  partprobe "$disk"
+
+  # Try sgdisk first, fall back to parted
+  if command -v sgdisk >/dev/null 2>&1; then
+    log "Using sgdisk for GPT partitioning"
+    sgdisk --zap-all "$disk" || true
+    partprobe "$disk" || true
+    sgdisk -n1:1MiB:+${EFI_SIZE_MIB}MiB -t1:EF00 -c1:"EFI System" "$disk"
+    sgdisk -n2:0:0 -t2:BF01 -c2:"ZFS" "$disk"
+    partprobe "$disk"
+  else
+    log "Using parted for GPT partitioning"
+    # Wipe existing partition table
+    dd if=/dev/zero of="$disk" bs=512 count=1 2>/dev/null || true
+    partprobe "$disk" || true
+    # Create GPT and partitions with parted
+    parted -s "$disk" mklabel gpt
+    parted -s -a optimal "$disk" mkpart primary fat32 1MiB ${EFI_SIZE_MIB}MiB
+    parted -s "$disk" set 1 esp on
+    parted -s -a optimal "$disk" mkpart primary ${EFI_SIZE_MIB}MiB 100%
+    partprobe "$disk"
+  fi
 }
 
 part_path() {
@@ -212,11 +230,13 @@ bootstrap_alpine() {
   fi
   setup-disk -k "$KERNEL_FLAVOR" -v /mnt
 
-  # Install ZFS into target
+  # Install ZFS into target (force download from online repos)
   cp -f /etc/apk/repositories /mnt/etc/apk/repositories || true
   chroot /mnt apk update || true
-  chroot /mnt apk add --no-cache zfs zfs-$KERNEL_FLAVOR
-  chroot /mnt apk add --no-cache eudev 2>/dev/null || log "eudev not available in target, using mdev"
+  # Clear cache to force online download
+  chroot /mnt rm -f /var/cache/apk/* 2>/dev/null || true
+  chroot /mnt apk add zfs zfs-$KERNEL_FLAVOR
+  chroot /mnt apk add eudev 2>/dev/null || log "eudev not available in target, using mdev"
 
   # Enable ZFS services
   chroot /mnt rc-update add zfs-import boot || true

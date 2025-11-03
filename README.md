@@ -8,26 +8,6 @@ This repo provides a single script to install Alpine Linux onto a single disk us
 - zstd-19 compression (forced)
 - Reasonable ZFS defaults (ashift=12, autotrim=on, xattr=sa, acltype=posixacl, atime=off)
 
-It creates a boot environment `zroot/ROOT/alpine` and uses a prebuilt ZFSBootMenu UEFI binary.
-
-> WARNING: This will wipe the target disk completely.
-
-## Requirements
-
-- Boot the Alpine extended ISO (UEFI) and login as root
-- Secure Boot must be disabled
-- Internet access (to install packages and download ZFSBootMenu EFI)
-
-## What gets installed
-
-- Disk layout: GPT with
-  - Partition 1: EFI System Partition (FAT32, ~1024 MiB)
-  - Partition 2: ZFS for the rest of the disk
-- ZFS pool: `zroot` with native encryption (passphrase prompt at boot)
-- Bootloader: ZFSBootMenu installed to the EFI System Partition and registered via `efibootmgr`
-- Alpine base system with `linux-lts`, ZFS userspace, and initramfs including ZFS support
-- OpenRC services: `zfs-import`, `zfs-load-key`, `zfs-mount` enabled
-
 ## Usage
 
 From the live ISO shell:
@@ -41,37 +21,25 @@ apk add curl lsblk dhcpcd
 
 setup-interfaces -r
 udhcpc -i "NAME OF YOUR INTEFRACE"
- # At this point notebook connects to internet with wifi.
 
+# At this point notebook connects to internet with wifi.
+# If no internet, proceed further, check ping 8.8.8.8 after each command.
 If network works - skip to install.
 
 ip link set <interface> up
 
 udhcpc -i "NAME OF YOUR INTEFRACE"
 
-
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
-# Get the script onto the ISO (choose one method):
+# List disks to identify your target
+lsblk -o NAME,SIZE,TYPE,MODEL
+
 
 # Method 1: Download directly (requires internet setup above)
 apk add curl
 curl -LO https://raw.githubusercontent.com/master-of-zen/alpine-autoinstall/refs/heads/main/alpine-zfs-installer.sh
-
-
-# Method 2: Copy from USB/network share
-# Mount your USB drive or network share containing the script, then:
-# mount /dev/sdb1 /mnt
-# cp /mnt/alpine-zfs-installer.sh /root/
-# chmod +x /root/alpine-zfs-installer.sh
-
-# Method 3: Paste the script manually
-# vi alpine-zfs-installer.sh
-# (paste content, save)
-# chmod +x alpine-zfs-installer.sh
-
-# List disks to identify your target
-lsblk -o NAME,SIZE,TYPE,MODEL
+chmod +x /root/alpine-zfs-installer.sh
 
 # Run the installer (DESTROYS the disk)
 ./alpine-zfs-installer.sh -d /dev/nvme0n1 -H myhost

@@ -230,8 +230,17 @@ bootstrap_alpine() {
   fi
   setup-disk -k "$KERNEL_FLAVOR" -v /mnt
 
-  # Install ZFS into target (force download from online repos)
-  cp -f /etc/apk/repositories /mnt/etc/apk/repositories || true
+  # Configure proper online APK repositories for the installed system
+  # (don't use live ISO's local media paths like /media/sda/apks)
+  log "Configuring APK repositories for installed system"
+  cat > /mnt/etc/apk/repositories <<'REPOS'
+https://dl-cdn.alpinelinux.org/alpine/v3.20/main
+https://dl-cdn.alpinelinux.org/alpine/v3.20/community
+@edge https://dl-cdn.alpinelinux.org/alpine/edge/main
+@edge https://dl-cdn.alpinelinux.org/alpine/edge/community
+@edgetesting https://dl-cdn.alpinelinux.org/alpine/edge/testing
+REPOS
+
   chroot /mnt apk update || true
   # Clear cache to force online download
   chroot /mnt rm -f /var/cache/apk/* 2>/dev/null || true

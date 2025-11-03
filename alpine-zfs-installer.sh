@@ -105,10 +105,13 @@ ensure_packages() {
 
   # Install required packages (try sgdisk first, fallback to gdisk)
   log "Installing required packages..."
-  if ! apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs sgdisk; then
+  if ! apk add --no-cache zfs parted util-linux dosfstools curl efibootmgr e2fsprogs sgdisk; then
     log "sgdisk not found, trying gdisk package..."
-    apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs gdisk || err "Failed to install required packages"
+    apk add --no-cache zfs parted util-linux dosfstools curl efibootmgr e2fsprogs gdisk || err "Failed to install required packages"
   fi
+
+  # Try to install eudev if available (optional, mdev works too)
+  apk add --no-cache eudev 2>/dev/null || log "eudev not available, using mdev"
 
   # Load ZFS module
   modprobe zfs || err "Failed to load ZFS kernel module"
@@ -212,7 +215,8 @@ bootstrap_alpine() {
   # Install ZFS into target
   cp -f /etc/apk/repositories /mnt/etc/apk/repositories || true
   chroot /mnt apk update || true
-  chroot /mnt apk add --no-cache zfs zfs-$KERNEL_FLAVOR eudev
+  chroot /mnt apk add --no-cache zfs zfs-$KERNEL_FLAVOR
+  chroot /mnt apk add --no-cache eudev 2>/dev/null || log "eudev not available in target, using mdev"
 
   # Enable ZFS services
   chroot /mnt rc-update add zfs-import boot || true

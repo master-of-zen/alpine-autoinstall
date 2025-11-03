@@ -33,17 +33,47 @@ It creates a boot environment `zroot/ROOT/alpine` and uses a prebuilt ZFSBootMen
 From the live ISO shell:
 
 ```fish
-# get the script (if not already on the ISO)
-apk add git
-cd /root
-git clone https://github.com/you/AlpineAutoInstall.git
-cd AlpineAutoInstall
-chmod +x alpine-zfs-installer.sh
 
-# list disks to identify your target
+Install packages:
+apk add curl lsblk dhcpcd
+
+# FIRST: Configure networking (required for downloads and package installation)
+
+setup-interfaces -r
+udhcpc -i "NAME OF YOUR INTEFRACE"
+ # At this point notebook connects to internet with wifi.
+
+If network works - skip to install.
+
+ip link set <interface> up
+
+udhcpc -i "NAME OF YOUR INTEFRACE"
+
+
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
+# Get the script onto the ISO (choose one method):
+
+# Method 1: Download directly (requires internet setup above)
+apk add curl
+curl -LO https://raw.githubusercontent.com/master-of-zen/alpine-autoinstall/refs/heads/main/alpine-zfs-installer.sh
+
+
+# Method 2: Copy from USB/network share
+# Mount your USB drive or network share containing the script, then:
+# mount /dev/sdb1 /mnt
+# cp /mnt/alpine-zfs-installer.sh /root/
+# chmod +x /root/alpine-zfs-installer.sh
+
+# Method 3: Paste the script manually
+# vi alpine-zfs-installer.sh
+# (paste content, save)
+# chmod +x alpine-zfs-installer.sh
+
+# List disks to identify your target
 lsblk -o NAME,SIZE,TYPE,MODEL
 
-# run the installer (DESTROYS the disk)
+# Run the installer (DESTROYS the disk)
 ./alpine-zfs-installer.sh -d /dev/nvme0n1 -H myhost
 ```
 

@@ -92,9 +92,26 @@ confirm_destruction() {
 ensure_packages() {
   # Live ISO environment packages
   need_cmd apk apk
-  apk update || true
-  apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs sgdisk || apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs gdisk
-  modprobe zfs || true
+
+  # Ensure repositories are configured (critical for live ISO)
+  if [ ! -s /etc/apk/repositories ]; then
+    log "Setting up APK repositories..."
+    setup-apkrepos -1 || true  # -1 selects first mirror automatically
+  fi
+
+  # Update package index
+  log "Updating package index..."
+  apk update || err "Failed to update package index. Check network connection."
+
+  # Install required packages (try sgdisk first, fallback to gdisk)
+  log "Installing required packages..."
+  if ! apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs sgdisk; then
+    log "sgdisk not found, trying gdisk package..."
+    apk add --no-cache zfs eudev parted util-linux dosfstools curl efibootmgr e2fsprogs gdisk || err "Failed to install required packages"
+  fi
+
+  # Load ZFS module
+  modprobe zfs || err "Failed to load ZFS kernel module"
   mdev -s || true
 }
 
